@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Сервис A</title>
+  <style>
+    body { font-family: sans-serif; max-width: 900px; margin: 20px auto; padding: 0 15px; background: #f0f8ff; }
+    h1 { color: #2c5aa0; }
+    .section { background: white; padding: 15px; margin: 20px 0; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    input, button { padding: 6px; margin: 4px; }
+    button { background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    button.delete { background: #f44336; padding: 4px 8px; }
+    button.view { background: #2196F3; }
+    button:hover { opacity: 0.9; }
+    .log { background: #f9f9f9; padding: 10px; border-radius: 4px; white-space: pre-wrap; font-family: monospace; margin-top: 10px; }
+    .entry { display: flex; align-items: center; gap: 8px; margin: 5px 0; }
+    .entry input { flex: 1; }
+    h2 { margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+  <h1>🟢 Сервис A</h1>
+
+  <!-- ЛОКАЛЬНЫЙ КЭШ -->
+  <div class="section">
+    <h2>📁 Локальный кэш (только для этого сервера)</h2>
+    <div class="entry">
+      <input type="text" id="newLocalKeyA" placeholder="Ключ" />
+      <input type="text" id="newLocalValueA" placeholder="Значение" />
+      <button onclick="addLocalEntry()">➕ Добавить</button>
+    </div>
+    <button onclick="loadLocalKeys()">🔃 Обновить список</button>
+    <div id="localEntriesList"><em>Загрузка...</em></div>
+    <div class="log" id="localLogA">Действия с локальным кэшем...</div>
+  </div>
+
+  <!-- ОБЩИЙ КЭШ -->
+  <div class="section">
+    <h2>🌐 Общее хранилище (<code>shared-data</code>)</h2>
+    <div class="entry">
+      <input type="text" id="newSharedKeyA" placeholder="Ключ" />
+      <input type="text" id="newSharedValueA" placeholder="Значение" />
+      <input type="number" id="newSharedTtlA" placeholder="TTL (сек)" value="60" min="1" style="width: 80px;" />
+      <button onclick="addSharedEntry()">➕ Добавить</button>
+    </div>
+    <button onclick="loadSharedKeys()">🔃 Обновить список</button>
+    <div id="sharedEntriesList"><em>Загрузка...</em></div>
+    <div class="log" id="sharedLogA">Действия с общим кэшем...</div>
+  </div>
+
+  <script>
+    function log(id, msg) {
+      document.getElementById(id).textContent += `\n→ ${msg}`;
+    }
+
+    // === ЛОКАЛЬНЫЙ КЭШ ===
+    async function addLocalEntry() {
+      const key = document.getElementById('newLocalKeyA').value.trim();
+      const value = document.getElementById('newLocalValueA').value;
+      if (!key) return alert('Введите ключ');
+      try {
+        const res = await fetch(`/local/${key}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ value })
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        log('localLogA', `Добавлено: ${key} = "${value}"`);
+        document.getElementById('newLocalKeyA').value = '';
+        document.getElementById('newLocalValueA').value = '';
+        loadLocalKeys();
+      } catch (err) {
+        log('localLogA', `Ошибка добавления: ${err.message}`);
+      }
+    }
+
+    async function deleteLocal(key) {
+      if (!confirm(`Удалить "${key}" из локального кэша?`)) return;
+      try {
+        const res = await fetch(`/local/${key}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        log('localLogA', `Удалено: ${key}`);
+        loadLocalKeys();
+      } catch (err) {
+        log('localLogA', `Ошибка удаления: ${err.message}`);
+      }
+    }
+
+    async function getLocal(key) {
+      try {
+        const res = await fetch(`/local/${key}`);
+        const contentType = res.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          throw new Error('Сервер вернул не JSON');
+        }
+        const data = await res.json();
+        log('localLogA', `Локальное значение: ${key} = ${JSON.stringify(data.value)}`);
+      } catch (err) {
+        log('localLogA', `Ошибка чтения: ${err.message}`);
+      }
+    }
+
+    async function loadLocalKeys() {
+      const listEl = document.getElementById('localEntriesList');
+      try {
+        const res = await fetch('/local/keys');
+        const contentType = res.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          throw new Error('Сервер вернул не JSON');
+        }
+        const data = await res.json();
+        const keys = Array.isArray(data.keys) ? data.keys : [];
+        if (keys.length === 0) {
+          listEl.innerHTML = '<em>Нет записей</em>';
+          return;
+        }
+        listEl.innerHTML = keys.map(key => `
+          <div class="entry">
+            <strong>${key}</strong>
+            <button class="view" onclick="getLocal('${key}')">👁️</button>
+            <button class="delete" onclick="deleteLocal('${key}')">×</button>
+          </div>
+        `).join('');
+      } catch (err) {
+        listEl.innerHTML = '<em>Ошибка загрузки</em>';
+        log('localLogA', `Не удалось загрузить ключи: ${err.message}`);
+      }
+    }
+
+    // === ОБЩИЙ КЭШ ===
+    async function addSharedEntry() {
+      const key = document.getElementById('newSharedKeyA').value.trim();
+      const value = document.getElementById('newSharedValueA').value;
+      const ttl = parseInt(document.getElementById('newSharedTtlA').value) || 60;
+      if (!key) return alert('Введите ключ');
+      try {
+        const res = await fetch(`/shared/${key}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ value, ttl })
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        log('sharedLogA', `Добавлено в общий кэш: ${key} = "${value}" (TTL: ${ttl})`);
+        document.getElementById('newSharedKeyA').value = '';
+        document.getElementById('newSharedValueA').value = '';
+        document.getElementById('newSharedTtlA').value = '60';
+        loadSharedKeys();
+      } catch (err) {
+        log('sharedLogA', `Ошибка добавления: ${err.message}`);
+      }
+    }
+
+    async function deleteShared(key) {
+      if (!confirm(`Удалить "${key}" из ОБЩЕГО кэша? Это повлияет на все сервисы!`)) return;
+      try {
+        const res = await fetch(`/shared/${key}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        log('sharedLogA', `Удалено из общего кэша: ${key}`);
+        loadSharedKeys();
+      } catch (err) {
+        log('sharedLogA', `Ошибка удаления: ${err.message}`);
+      }
+    }
+
+    async function getShared(key) {
+      try {
+        const res = await fetch(`/shared/${key}`);
+        const contentType = res.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          throw new Error('Сервер вернул не JSON');
+        }
+        const data = await res.json();
+        log('sharedLogA', `Общее значение: ${key} = ${JSON.stringify(data.value)}`);
+      } catch (err) {
+        log('sharedLogA', `Ошибка чтения: ${err.message}`);
+      }
+    }
+
+    async function loadSharedKeys() {
+      const listEl = document.getElementById('sharedEntriesList');
+      try {
+        const res = await fetch('/shared/keys');
+        const contentType = res.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          throw new Error('Сервер вернул не JSON');
+        }
+        const data = await res.json();
+        const keys = Array.isArray(data.keys) ? data.keys : [];
+        if (keys.length === 0) {
+          listEl.innerHTML = '<em>Нет записей</em>';
+          return;
+        }
+        listEl.innerHTML = keys.map(key => `
+          <div class="entry">
+            <strong>${key}</strong>
+            <button class="view" onclick="getShared('${key}')">👁️</button>
+            <button class="delete" onclick="deleteShared('${key}')">×</button>
+          </div>
+        `).join('');
+      } catch (err) {
+        listEl.innerHTML = '<em>Ошибка загрузки</em>';
+        log('sharedLogA', `Не удалось загрузить ключи: ${err.message}`);
+      }
+    }
+
+    loadLocalKeys();
+    loadSharedKeys();
+  </script>
+</body>
+</html>
