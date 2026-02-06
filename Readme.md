@@ -60,6 +60,13 @@ mini-cache-demo
 # Терминал 1: общий кэш
 npm start --prefix cache-server
 
+#либо отдельно через CLI
+npx mini-cache-ttl-server
+# На порту 4000
+npx mini-cache-ttl-server --port 4000
+# С токеном
+npx mini-cache-ttl-server -p 4000 -t my-secret-key
+
 # Терминал 2: сервис A
 node server-a/app.js
 
@@ -109,4 +116,58 @@ node test-cache/test-local.mjs
 
 # Удалённый кэш (требуется запущенный cache-server)
 node test-cache/test-remote.mjs
+```
+
+# Дашборд и стресс тест
+
+### Дашборд
+Запустить сервис с дашбордом можно двумя способами
+
+через код
+```javascript
+import { createApp } from 'mini-cache-ttl/server';
+import { monitor } from 'mini-cache-ttl/monitor';
+
+const { app, stores } = createApp();
+
+// Подключаем мониторинг
+monitor(app, { stores });
+
+app.listen(4000, () => {
+  console.log('✅ Кэш-сервер с мониторингом запущен на http://localhost:4000');
+});
+```
+
+через консоль
+
+```bash
+npx mini-cache-ttl-server -p 4000 --monitor
+# или
+npx mini-cache-ttl-server -p 4000 -m
+
+```
+Для просмотра нужно перейти по адресу
+`http://localhost:PORT/dashboard`
+
+### Стресс тест
+
+Для запуска стресс теста введите команду в терминале
+
+```bash
+cd ./test-cache
+node stress-test.mjs
+```
+
+вы можете изменить свойства теста либо в переммных в коде либо передать их при запуске
+
+CLI
+```bash
+node stress-test.mjs --query 10000 --parquery 300 --ttl 120
+#или
+node stress-test.mjs -q 1000 -l 300 -t 1
+
+# --query (-q) общее количество запросов
+# --parquery (-l) количество параллельных запросов
+# --ttl (-t) Время жизни одной записи в кэше 
+# если поставить r то время будет случайным
 ```
