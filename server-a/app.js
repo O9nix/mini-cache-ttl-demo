@@ -13,7 +13,7 @@ const PORT = 3001;
 
 // Локальный и общий кэш
 const localCache = createStore();
-const sharedCache = createRemoteStore('http://localhost:4000', 'shared-data');
+const sharedCache = createRemoteStore('http://localhost:4000', 'shared-data','123');
 
 // 1. JSON parser
 app.use(express.json());
@@ -49,6 +49,7 @@ app.get('/local/:key', (req, res) => {
 app.get('/shared/keys', async (req, res) => {
   try {
     const keys = await sharedCache.keys();
+    console.log(await sharedCache.keys())
     res.json({ keys });
   } catch (err) {
     res.status(500).json({ error: err.message });
